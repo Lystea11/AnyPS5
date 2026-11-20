@@ -92,7 +92,7 @@ def environment(modules):
     return copy
 
 
-def replay(binary, modules, golden, skip, timeout, run=subprocess.run):
+def replay(binary, modules, golden, skip, timeout, run=subprocess.run, *, ran_cases=None):
     skipped = set(skip)
     failures = {}
     while True:
@@ -116,9 +116,11 @@ def replay(binary, modules, golden, skip, timeout, run=subprocess.run):
                 findings[fields[1]] = ("throw" if fields[0] == "DIFF" and " threw '" in detail else fields[0].lower(), detail)
             elif fields[0] == "SUMMARY":
                 summary = " ".join(fields[1:])
-        if not hung and code == 0 and summary is not None:
-            return findings, summary
         started = [line.split("\t", 1)[1] for line in errors.splitlines() if line.startswith("RUN\t")]
+        if not hung and code == 0 and summary is not None:
+            if ran_cases is not None:
+                ran_cases.update(started)
+            return findings, summary
         if not started or started[-1] in skipped:
             tail = errors.strip().splitlines()[-1:] or ["no output"]
             raise SystemExit(f"{golden}: the replay failed before reaching a case: {tail[0]}")
@@ -141,14 +143,6 @@ def classify(known, findings, ran_cases):
         if kind != "skip" and case not in findings and case in ran_cases:
             stale.append((case, kind, reason))
     return new, expected, stale
-
-
-def case_ids(golden):
-    ids = set()
-    for line in Path(golden).read_text(encoding="utf-8", errors="replace").splitlines():
-        if line and not line.startswith("#"):
-            ids.add(line.split("\t", 1)[0])
-    return ids
 
 
 def default_replay(build):
@@ -212,10 +206,9 @@ def main(argv=None):
     findings, ran_cases, failed = {}, set(), False
     for family in families:
         golden = fetch(family, cache)
-        found, summary = replay(binary, modules, golden, skip, args.timeout)
+        found, summary = replay(binary, modules, golden, skip, args.timeout, ran_cases=ran_cases)
         print(f"{family}: {summary}")
         findings.update(found)
-        ran_cases |= case_ids(golden) - skip
     note = missing_warning(binary, modules, findings)
     if note:
         print(note)

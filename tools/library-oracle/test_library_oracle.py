@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from functools import partial
 from unittest import mock
 from pathlib import Path
 
@@ -116,13 +117,17 @@ class KnownTests(unittest.TestCase):
     def test_write_known_after_one_family_preserves_unrun_findings(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "known.tsv"
-            path.write_text("libc-pass\tdiff\tnow matches\nlibc-change\tdiff\tkeep reason\nkernel-case\tcrash\tunrun reason\nskipped-case\tskip\tenvironment\n",
+            path.write_text("libc-pass\tdiff\tnow matches\nlibc-change\tdiff\tkeep reason\nkernel-case\tcrash\tunrun reason\n"
+                            "skipped-case\tskip\tenvironment\nlibc-unmeasured\tdiff\tkeep until compared\n",
                             encoding="utf-8")
             golden = Path(directory) / "libc.golden.tsv"
-            golden.write_text("libc-pass\tcase\nlibc-change\tcase\nlibc-new\tcase\nskipped-case\tcase\n", encoding="utf-8")
-            findings = {"libc-change": ("throw", "new detail"), "libc-new": ("diff", "new finding")}
+            golden.write_text("libc-pass\tcase\nlibc-change\tcase\nlibc-new\tcase\nskipped-case\tcase\n"
+                              "libc-unmeasured\tlibc\tfunction\t-\tnone\tok\t0\t-\n", encoding="utf-8")
+            process = Script(Done(0, "DIFF\tlibc-change\tfunction() threw 'unsupported'\nDIFF\tlibc-new\tnew finding\n"
+                                     "SUMMARY\tcompared 3\tmismatched 2\tskipped 2\n",
+                                  "RUN\tlibc-pass\nRUN\tlibc-change\nRUN\tlibc-new\n"))
             with mock.patch.object(library_oracle, "fetch", return_value=golden) as fetch, \
-                 mock.patch.object(library_oracle, "replay", return_value=(findings, "compared 3")) as replay, \
+                 mock.patch.object(library_oracle, "replay", side_effect=partial(library_oracle.replay, run=process)) as replay, \
                  mock.patch("sys.stdout", new_callable=io.StringIO):
                 result = library_oracle.main(["libc", "--known", str(path), "--replay", "unused", "--write-known"])
             self.assertEqual(result, 0)
@@ -133,6 +138,7 @@ class KnownTests(unittest.TestCase):
                 "libc-change": ("throw", "keep reason"),
                 "libc-new": ("diff", ""),
                 "skipped-case": ("skip", "environment"),
+                "libc-unmeasured": ("diff", "keep until compared"),
             })
 
     def test_write_known_without_replayed_cases_preserves_existing_findings(self):
@@ -281,8 +287,7 @@ class OutputTests(unittest.TestCase):
             replay.write_bytes(b"")
             stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
             with patch.object(library_oracle, "fetch", return_value=Path(directory) / "rtc.golden.tsv"), \
-                    patch.object(library_oracle, "replay", return_value=({"rtc_case": ("diff", "ret 0x1")}, "compared 1")), \
-                    patch.object(library_oracle, "case_ids", return_value={"rtc_case"}), redirect_stdout(stdout):
+                    patch.object(library_oracle, "replay", return_value=({"rtc_case": ("diff", "ret 0x1")}, "compared 1")), redirect_stdout(stdout):
                 result = library_oracle.main(["rtc", "--replay", str(replay), "--known", str(known), "--write-known"])
                 stdout.flush()
             self.assertEqual(result, 0)
