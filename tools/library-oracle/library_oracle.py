@@ -103,6 +103,10 @@ def replay(binary, modules, golden, skip, timeout, run=subprocess.run):
             code, output, errors = done.returncode, text(done.stdout), text(done.stderr)
         except subprocess.TimeoutExpired as expired:
             code, output, errors, hung = None, text(expired.stdout), text(expired.stderr), True
+        if code == 2:
+            for line in errors.splitlines():
+                if line.startswith("INPUT_ERROR\t"):
+                    raise SystemExit(line.split("\t", 1)[1])
         findings = dict(failures)
         summary = None
         for line in output.splitlines():

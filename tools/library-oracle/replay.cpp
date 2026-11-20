@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -247,7 +248,7 @@ int main(int argc, char** argv) {
         for (const auto& name : Fallbacks()) std::printf("MODULE\t%s\n", name.c_str());
         return 0;
     }
-    if (argc < 3) {
+    if (argc < 3 || (std::strcmp(argv[2], "--skip") == 0 && argc < 5)) {
         std::fprintf(stderr, "usage: %s MODULE_DIRECTORY [--skip ID,...] GOLDEN.tsv...\n", argv[0]);
         return 2;
     }
@@ -264,6 +265,11 @@ int main(int argc, char** argv) {
     int compared = 0, mismatched = 0, skipped = 0;
     for (int f = first; f < argc; ++f) {
         std::ifstream in(argv[f]);
+        std::error_code error;
+        if (!in.is_open() || std::filesystem::is_directory(argv[f], error)) {
+            std::fprintf(stderr, "INPUT_ERROR\tcannot open measurement file: %s\n", argv[f]);
+            return 2;
+        }
         std::string line;
         while (std::getline(in, line)) {
             if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -340,6 +346,10 @@ int main(int argc, char** argv) {
                 std::printf("DIFF\t%s\t%s(%s)%s\n", id.c_str(), function.c_str(), spec.c_str(), difference.str().c_str());
             }
             ran[id] = std::move(arguments);
+        }
+        if (!in.eof() || in.bad()) {
+            std::fprintf(stderr, "INPUT_ERROR\tcannot read measurement file: %s\n", argv[f]);
+            return 2;
         }
     }
     std::printf("SUMMARY\tcompared %d\tmismatched %d\tskipped %d\n", compared, mismatched, skipped);

@@ -30,6 +30,12 @@ class Script:
 
 
 class ReplayTests(unittest.TestCase):
+    def test_read_error_after_a_case_does_not_retry_it_as_a_crash(self):
+        run = Script(Done(2, "", "RUN\tcase1\nINPUT_ERROR\tcannot read measurement file: cases.tsv\n"))
+        with self.assertRaisesRegex(SystemExit, "cannot read measurement file: cases.tsv"):
+            library_oracle.replay("replay", "modules", "cases.tsv", set(), 5, run)
+        self.assertEqual(len(run.commands), 1)
+
     def test_a_crash_is_recorded_and_the_case_skipped_on_the_next_run(self):
         run = Script(Done(3, "DIFF\ta\tf(i:1) ret console=0x1 anyps5=0x0\n", "RUN\ta\nRUN\tb\n"),
                      Done(0, "DIFF\ta\tf(i:1) ret console=0x1 anyps5=0x0\nSUMMARY\tcompared 1\tmismatched 1\tskipped 1\n", "RUN\ta\n"))
@@ -169,24 +175,44 @@ class FetchTests(unittest.TestCase):
             library_oracle.FAMILIES.update(original)
 
 
-class ModuleTests(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "darwin", "requires the macOS dynamic loader")
+@unittest.skipUnless(sys.platform == "darwin", "requires the macOS dynamic loader")
+class MacReplayTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temporary.cleanup)
+        cls.binary = Path(temporary.name) / "library_oracle_replay"
+        cls.compiler = ["xcrun", "clang++", "-arch", "x86_64", "-std=c++20"]
+        subprocess.run([*cls.compiler, "-I", str(library_oracle.ROOT / "core/libs"), str(library_oracle.HERE / "replay.cpp"),
+                        "-o", str(cls.binary)], check=True)
+
+    def test_missing_measurements_do_not_report_a_successful_empty_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            empty = root / "empty.tsv"
+            empty.touch()
+            self.assertEqual(library_oracle.replay(self.binary, root, empty, set(), 5), ({}, "compared 0 mismatched 0 skipped 0"))
+            for invalid in ([root / "absent.tsv"], [empty, root / "absent.tsv"], [root], ["--skip"], ["--skip", "case"]):
+                with self.subTest(arguments=invalid):
+                    result = subprocess.run([self.binary, root, *invalid], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertNotIn("SUMMARY", result.stdout)
+                    self.assertIn("usage:" if invalid[0] == "--skip" else str(invalid[-1]), result.stderr)
+
     def test_macos_replay_resolves_only_the_modules_own_exports(self):
         with tempfile.TemporaryDirectory() as directory:
             modules = Path(directory)
-            binary = modules / "library_oracle_replay"
-            compiler = ["xcrun", "clang++", "-arch", "x86_64", "-std=c++20"]
-            subprocess.run([*compiler, "-I", str(library_oracle.ROOT / "core/libs"), str(library_oracle.HERE / "replay.cpp"),
-                            "-o", str(binary)], check=True)
-            subprocess.run([*compiler, "-dynamiclib", "-x", "c++", "-", "-o", str(modules / "fixture.prx")],
+            subprocess.run([*self.compiler, "-dynamiclib", "-x", "c++", "-", "-o", str(modules / "fixture.prx")],
                            input='extern "C" unsigned long long value_nid_postfix() { return 42; }\n', text=True, check=True)
             golden = modules / "lookup.tsv"
             golden.write_text("own\tfixture\tvalue\t-\tret\tok\t2a\t-\n"
                               "dependency\tfixture\tgetpid\t-\tret\tok\t0\t-\n", encoding="utf-8")
-            findings, summary = library_oracle.replay(binary, modules, golden, set(), 5)
+            findings, summary = library_oracle.replay(self.binary, modules, golden, set(), 5)
             self.assertEqual(findings, {"dependency": ("missing", "getpid")})
             self.assertEqual(summary, "compared 1 mismatched 0 skipped 1")
 
+
+class ModuleTests(unittest.TestCase):
     def test_required_modules_asks_the_replay_for_the_chain_it_resolves_through(self):
         run = Script(Done(0, "MODULE\tlibc.prx\nMODULE\tlibkernel.prx\n", ""))
         self.assertEqual(library_oracle.required_modules("replay", run), ["libc.prx", "libkernel.prx"])
