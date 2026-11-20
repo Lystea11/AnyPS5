@@ -1,3 +1,4 @@
+#include "prx/libSceIcu/FieldPositionIterator.hpp"
 #include "prx/libSceIcu/RecoveredSignatures.hpp"
 #include "prx/libSceIcu/Status.hpp"
 #include "prx/libc/include/General.hpp"
@@ -13,6 +14,12 @@ namespace {
 std::mutex iteratorMutex;
 std::unordered_set<UFieldPositionIterator*> iterators;
 
+}
+
+std::unique_lock<std::mutex> Icu::LockFieldPositionIterator_nid_no_patch(UFieldPositionIterator* iterator, const char* caller) {
+    std::unique_lock lock(iteratorMutex);
+    if (!iterators.contains(iterator)) NotImplemented_nid_no_patch(caller);
+    return lock;
 }
 
 extern "C" {
@@ -43,8 +50,7 @@ UFieldPositionIterator* APS5_VABI ufieldpositer_open_nid_postfix(std::int32_t* s
 
 std::int32_t APS5_VABI ufieldpositer_next_nid_postfix(UFieldPositionIterator* fpositer, std::int32_t* beginIndex,
                                                     std::int32_t* endIndex) {
-    const std::lock_guard lock(iteratorMutex);
-    if (!iterators.contains(fpositer)) NotImplemented_nid_no_patch(__func__);
+    const auto lock = Icu::LockFieldPositionIterator_nid_no_patch(fpositer, __func__);
     return ufieldpositer_next(fpositer, beginIndex, endIndex);
 }
 
