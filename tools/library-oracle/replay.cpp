@@ -4,7 +4,9 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#if !defined(__APPLE__)
 #include <link.h>
+#endif
 #endif
 
 #include <cstdint>
@@ -100,6 +102,8 @@ void* OpenModule(const std::string& name) {
     if (found != modules.end()) return found->second;
 #if defined(_WIN32)
     void* handle = reinterpret_cast<void*>(LoadLibraryA(name.c_str()));
+#elif defined(__APPLE__)
+    void* handle = dlopen(name.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_FIRST);
 #else
     void* handle = dlopen(name.c_str(), RTLD_NOW | RTLD_GLOBAL);
 #endif
@@ -110,6 +114,8 @@ void* OpenModule(const std::string& name) {
 void* Symbol(void* module, const std::string& name) {
 #if defined(_WIN32)
     return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(module), name.c_str()));
+#elif defined(__APPLE__)
+    return dlsym(module, name.c_str());
 #else
     void* address = dlsym(module, name.c_str());
     link_map* map = nullptr;
