@@ -1,0 +1,174 @@
+{
+  "base": "b23daffaf9d28838510857fc4e6771af04a16926",
+  "head": "44b621151ff3f0bc07e02766e269478a81c6ca44",
+  "files": [
+    {
+      "path": ".gitignore",
+      "snapshot": "review/files/.gitignore",
+      "git_blob": "cfbf0bddaeb63b7cc6eac6f01585893b10abdf7a",
+      "bytes": 1038,
+      "sha256": "212db24b260456a02f9064a51518f02db8608c17401b159e2fbb8730d84bac7c",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/.gitignore"
+    },
+    {
+      "path": "cmake/Icu.cmake",
+      "snapshot": "review/files/cmake/Icu.cmake",
+      "git_blob": "5b84659581dca61285e774bf39f3e3f823bf5a3b",
+      "bytes": 7475,
+      "sha256": "40d9fba6302927cbfe5f4cb9a71d51b29e818ad6927b96f4b5b28af009138de2",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/cmake/Icu.cmake"
+    },
+    {
+      "path": "cmake/IcuData.cmake",
+      "snapshot": "review/files/cmake/IcuData.cmake",
+      "git_blob": "1dcdd6974fe6fc3ec104b71630b756dfd76564dd",
+      "bytes": 3699,
+      "sha256": "7241207037a1894fe8fad3e827deedb98f971bbbdbd6c4b87336cc1209c08fd2",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/cmake/IcuData.cmake"
+    },
+    {
+      "path": "cmake/IcuDataFilter.json",
+      "snapshot": "review/files/cmake/IcuDataFilter.json",
+      "git_blob": "5dc766ab9236dfb1f9bd3c35d5328424aad9bb0a",
+      "bytes": 564,
+      "sha256": "7b4af889c7dcbf07b875c0154a4bf9d7306f3f86024a7f41642a4f43b7fb4e16",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/cmake/IcuDataFilter.json"
+    },
+    {
+      "path": "cmake/icu-host/CMakeLists.txt",
+      "snapshot": "review/files/cmake/icu-host/CMakeLists.txt",
+      "git_blob": "e6ca1fe197fbbc625aca2105ef575d14a0ac3a55",
+      "bytes": 2146,
+      "sha256": "b111f9b22277f6df20c12019bd6e160942a758a019aadb4da288bb48d0f87775",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/cmake/icu-host/CMakeLists.txt"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/CMakeLists.txt",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/CMakeLists.txt",
+      "git_blob": "4e6dbc636d00e38b1f1d42b9d89ea0bbd98f6ce6",
+      "bytes": 54363,
+      "sha256": "423dc419065a1a5156831285993a6f2ac3c01f9b3baef8fcdaceddb5c211902b",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/CMakeLists.txt"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/Configuration.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/Configuration.cpp",
+      "git_blob": "606789ace74a562278a0d208919028b712b67dcc",
+      "bytes": 7256,
+      "sha256": "8ac86d19a823761346f3bf1f26897dc0a3c68289e32d0d5c3b00bd0cf8ff9222",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/Configuration.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/DateFormat.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/DateFormat.cpp",
+      "git_blob": "19e3a56a8bc470b512144b2631e071982987df81",
+      "bytes": 12567,
+      "sha256": "b2fbe6ed8892a1c44198ad42b8604dc07daea03499c2511d43af2e9172a56123",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/DateFormat.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/DateFormat.hpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/DateFormat.hpp",
+      "git_blob": "e02c3e198206a6312dcd55cc507b6160c00ce2ec",
+      "bytes": 1334,
+      "sha256": "83fe4155d87430869589714fc490c3fe436cc0ce38b62863fb22253624b932b5",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/DateFormat.hpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/FieldPositionIterator.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/FieldPositionIterator.cpp",
+      "git_blob": "91339f3cb9396c3478d1a1ff4adf077ed93ffde5",
+      "bytes": 3898,
+      "sha256": "7246b9fe5afac7f3e52e547f6fa84faf5124a3a7b3a60141c8f9e9cfaa7e20da",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/FieldPositionIterator.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/FieldPositionIterator.hpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/FieldPositionIterator.hpp",
+      "git_blob": "95a21de4d148e19f38f5d1876c1a0c32fd02b96b",
+      "bytes": 559,
+      "sha256": "0786679c76ee5e9562035c362bf776f8a1ca39a2103d30281153ef34904c4c39",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/FieldPositionIterator.hpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/RecoveredSignatures.hpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/RecoveredSignatures.hpp",
+      "git_blob": "f83f36e1b179b2434de3f5b3065204033ce12955",
+      "bytes": 15085,
+      "sha256": "63209394aa2c78442080aebdcfc2d4c7798e956d78fb19622eeb3d22affdecaa",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/RecoveredSignatures.hpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/tests/DateFormat.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/tests/DateFormat.cpp",
+      "git_blob": "d16bebfdd135f3c430a6be19b6a609d2ff41f804",
+      "bytes": 23174,
+      "sha256": "63aaf6ea9c06942631d2347ad274d58fbe03234c69d2e9f541217cce8a228a4b",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/tests/DateFormat.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp",
+      "git_blob": "c81d4e11da10fc4f87b428d0a61d5f7f240577c1",
+      "bytes": 10558,
+      "sha256": "2d54d89d6bfe3410952b0ae8cc88c2797174da5501fa46a3602a3334ed3f8574",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp",
+      "git_blob": "35a896be646b340806006a7788c8338bdadfa782",
+      "bytes": 11211,
+      "sha256": "ae230ed7cf864bda731faf0b53a8fd20de6b0198d4b952df1e8f11b228218cd5",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp"
+    },
+    {
+      "path": "core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp",
+      "snapshot": "review/files/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp",
+      "git_blob": "20875da27a8a593dd31c61ae6eaad4885a5bc2c0",
+      "bytes": 1300,
+      "sha256": "08f50529b39877259ba10b24e57853f218880374a615a34b234fa994d3585ea2",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp"
+    },
+    {
+      "path": "docs/dev/BUILD.md",
+      "snapshot": "review/files/docs/dev/BUILD.md",
+      "git_blob": "896778b7564b70390c550035d51e0633eb0b74f6",
+      "bytes": 99285,
+      "sha256": "b7a7d7a1ab385de7a8bc21863ff281b2dd24681d4ce84575fab3c477e63ac17a",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/docs/dev/BUILD.md"
+    },
+    {
+      "path": "docs/dev/debt/changes/feat-icu-date-format.md",
+      "snapshot": "review/files/docs/dev/debt/changes/feat-icu-date-format.md",
+      "git_blob": "e8b4f01ff1497228d5598c424bb0e7f5dce24809",
+      "bytes": 780,
+      "sha256": "c7a38682e327d22c3a7853289612c9512fd793f02fbf4b968835d3d934892eec",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/docs/dev/debt/changes/feat-icu-date-format.md"
+    },
+    {
+      "path": "docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md",
+      "snapshot": "review/files/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md",
+      "git_blob": "d689a1269a15ec17ea4c22259ddfad37d92f5dd4",
+      "bytes": 505,
+      "sha256": "7881ce2d351e53e6e61bf5087dc5edea52f8cdd70f1a81beaa1a2ce47a212896",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md"
+    },
+    {
+      "path": "docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md",
+      "snapshot": "review/files/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md",
+      "git_blob": "d76d2da93f393b3ed4f5997f708a42d00daa7f91",
+      "bytes": 567,
+      "sha256": "1b5d91c57bc3540699abe0ec14f6d3166deb39ca423d6b7dbd2d66491c287cd8",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md"
+    },
+    {
+      "path": "docs/dev/debt/changes/feat-libsceicu-availability-exports.md",
+      "snapshot": "review/files/docs/dev/debt/changes/feat-libsceicu-availability-exports.md",
+      "git_blob": "8061fa77efc374cbf766eb2f33ce9b2accdcf20a",
+      "bytes": 737,
+      "sha256": "ebdeb43f625b2ce06e1ed94c5cfb204e5f24125fa3f106775d6d796983a2312c",
+      "head_url": "https://github.com/Lystea11/AnyPS5/blob/44b621151ff3f0bc07e02766e269478a81c6ca44/docs/dev/debt/changes/feat-libsceicu-availability-exports.md"
+    }
+  ]
+}

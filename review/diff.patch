@@ -1,0 +1,1224 @@
+diff --git a/.gitignore b/.gitignore
+index 1f8630c177a..cfbf0bddaeb 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -104,6 +104,7 @@ downloads/
+ !demo/web/i18n/*.json
+ !/docs/run-report.schema.json
+ !/docs/run-report-fixtures/*.json
++!/cmake/IcuDataFilter.json
+ !tools/titles.json
+ !tools/input-mapper/package.json
+ 
+diff --git a/cmake/Icu.cmake b/cmake/Icu.cmake
+index 25cd11f7286..5b84659581d 100644
+--- a/cmake/Icu.cmake
++++ b/cmake/Icu.cmake
+@@ -35,8 +35,8 @@ add_library(icu_common STATIC EXCLUDE_FROM_ALL
+     ${ICU_SOURCE_DIR}/common/filterednormalizer2.cpp
+     ${ICU_SOURCE_DIR}/common/loadednormalizer2impl.cpp
+     ${ICU_SOURCE_DIR}/common/errorcode.cpp
+-        ${ICU_SOURCE_DIR}/common/locavailable.cpp
+-        ${ICU_SOURCE_DIR}/common/locmap.cpp
++    ${ICU_SOURCE_DIR}/common/locavailable.cpp
++    ${ICU_SOURCE_DIR}/common/locmap.cpp
+     ${ICU_SOURCE_DIR}/common/normalizer2.cpp
+     ${ICU_SOURCE_DIR}/common/normalizer2impl.cpp
+     ${ICU_SOURCE_DIR}/common/parsepos.cpp
+@@ -141,18 +141,10 @@ if(MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+     target_link_options(icu_common INTERFACE LINKER:--exclude-libs,libicu_common.a)
+ endif()
+ 
+-add_library(icu_i18n STATIC EXCLUDE_FROM_ALL
+-    ${ICU_SOURCE_DIR}/i18n/csdetect.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csmatch.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csr2022.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csrecog.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csrmbcs.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csrsbcs.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csrucode.cpp
+-    ${ICU_SOURCE_DIR}/i18n/csrutf8.cpp
+-    ${ICU_SOURCE_DIR}/i18n/inputext.cpp
+-    ${ICU_SOURCE_DIR}/i18n/ucln_in.cpp
+-    ${ICU_SOURCE_DIR}/i18n/ucsdet.cpp)
++file(STRINGS ${ICU_SOURCE_DIR}/i18n/sources.txt icu_i18n_sources)
++list(TRANSFORM icu_i18n_sources PREPEND ${ICU_SOURCE_DIR}/i18n/)
++list(REMOVE_DUPLICATES icu_i18n_sources)
++add_library(icu_i18n STATIC EXCLUDE_FROM_ALL ${icu_i18n_sources})
+ target_include_directories(icu_i18n SYSTEM PUBLIC ${ICU_SOURCE_DIR}/i18n)
+ target_compile_definitions(icu_i18n PRIVATE U_I18N_IMPLEMENTATION UCONFIG_NO_FILE_IO=1)
+ target_link_libraries(icu_i18n PUBLIC icu_common)
+@@ -161,8 +153,4 @@ if(MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+     target_link_options(icu_i18n INTERFACE LINKER:--exclude-libs,libicu_i18n.a)
+ endif()
+ 
+-target_sources(icu_i18n PRIVATE
+-    ${ICU_SOURCE_DIR}/i18n/ufieldpositer.cpp
+-    ${ICU_SOURCE_DIR}/i18n/fpositer.cpp
+-    ${CMAKE_SOURCE_DIR}/core/libs/prx/libSceIcu/FieldPositionBackend.cpp
+-    ${ICU_SOURCE_DIR}/i18n/fphdlimp.cpp)
++include(${CMAKE_CURRENT_LIST_DIR}/IcuData.cmake)
+diff --git a/cmake/IcuData.cmake b/cmake/IcuData.cmake
+new file mode 100644
+index 00000000000..1dcdd6974fe
+--- /dev/null
++++ b/cmake/IcuData.cmake
+@@ -0,0 +1,70 @@
++include(ExternalProject)
++if(NOT Python3_EXECUTABLE)
++    find_package(Python3 REQUIRED COMPONENTS Interpreter)
++endif()
++set(ANYPS5_ICU_HOST_C_COMPILER "" CACHE FILEPATH "Native C compiler for ICU data tools when cross compiling")
++set(ANYPS5_ICU_HOST_CXX_COMPILER "" CACHE FILEPATH "Native C++ compiler for ICU data tools when cross compiling")
++set(icu_host_compilers)
++if(CMAKE_CROSSCOMPILING)
++    if(NOT ANYPS5_ICU_HOST_C_COMPILER OR NOT ANYPS5_ICU_HOST_CXX_COMPILER)
++        message(FATAL_ERROR "Set ANYPS5_ICU_HOST_C_COMPILER and ANYPS5_ICU_HOST_CXX_COMPILER to native compilers")
++    endif()
++    list(APPEND icu_host_compilers
++        -DCMAKE_C_COMPILER=${ANYPS5_ICU_HOST_C_COMPILER}
++        -DCMAKE_CXX_COMPILER=${ANYPS5_ICU_HOST_CXX_COMPILER})
++else()
++    list(APPEND icu_host_compilers -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER})
++endif()
++set(icu_host_dir ${CMAKE_BINARY_DIR}/icu-host)
++set(icu_host_outputs)
++foreach(tool genbrk gendict genrb gencnval icupkg genccode)
++    if(CMAKE_HOST_WIN32)
++        set(icu_host_${tool} ${icu_host_dir}/bin/${tool}/host/${tool}.exe)
++    else()
++        set(icu_host_${tool} ${icu_host_dir}/bin/${tool})
++    endif()
++    list(APPEND icu_host_outputs ${icu_host_${tool}})
++endforeach()
++ExternalProject_Add(icu_host_tools
++    SOURCE_DIR ${CMAKE_SOURCE_DIR}/cmake/icu-host
++    BINARY_DIR ${icu_host_dir}
++    CMAKE_ARGS ${icu_host_compilers}
++        -DICU_SOURCE_DIR=${ICU_SOURCE_DIR}
++        -DCMAKE_BUILD_TYPE=Release
++        -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
++        -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
++    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --parallel 6
++    INSTALL_COMMAND ""
++    BUILD_ALWAYS TRUE
++    BUILD_BYPRODUCTS ${icu_host_outputs}
++    EXCLUDE_FROM_ALL TRUE)
++set(icu_data_dir ${CMAKE_BINARY_DIR}/icu-data)
++file(GLOB_RECURSE icu_data_inputs CONFIGURE_DEPENDS ${ICU_SOURCE_DIR}/data/* ${ICU_SOURCE_DIR}/python/*.py)
++if(CMAKE_HOST_WIN32)
++    set(icu_data_mode windows-exec)
++else()
++    set(icu_data_mode unix-exec)
++endif()
++add_custom_command(OUTPUT ${icu_data_dir}/icudt78l_dat.c
++    COMMAND ${CMAKE_COMMAND} -E make_directory ${icu_data_dir}/icudt78l ${icu_data_dir}/tmp
++    COMMAND ${CMAKE_COMMAND} -E time ${CMAKE_COMMAND} -E env PYTHONPATH=${ICU_SOURCE_DIR}/python
++        ${Python3_EXECUTABLE} -m icutools.databuilder
++        --mode=${icu_data_mode} --tool_cfg=host --tool_dir=${icu_host_dir}/bin
++        --src_dir=${ICU_SOURCE_DIR}/data --out_dir=${icu_data_dir}/icudt78l --tmp_dir=${icu_data_dir}/tmp
++        --filter_file=${CMAKE_SOURCE_DIR}/cmake/IcuDataFilter.json --verbose
++    COMMAND ${icu_host_icupkg} -tl -a ${icu_data_dir}/tmp/icudata.lst
++        -s ${icu_data_dir}/icudt78l new ${icu_data_dir}/icudt78l.dat
++    COMMAND ${icu_host_genccode} -e icudt78 -d ${icu_data_dir} ${icu_data_dir}/icudt78l.dat
++    DEPENDS icu_host_tools ${icu_host_outputs} ${icu_data_inputs} ${CMAKE_SOURCE_DIR}/cmake/IcuDataFilter.json
++    VERBATIM)
++get_target_property(icu_common_sources icu_common SOURCES)
++list(REMOVE_ITEM icu_common_sources ${ICU_SOURCE_DIR}/stubdata/stubdata.cpp ${ICU_NORMALIZATION_SOURCE})
++file(STRINGS ${ICU_SOURCE_DIR}/common/sources.txt icu_all_common)
++list(TRANSFORM icu_all_common PREPEND ${ICU_SOURCE_DIR}/common/)
++list(APPEND icu_common_sources ${icu_all_common})
++list(REMOVE_DUPLICATES icu_common_sources)
++set_property(TARGET icu_common PROPERTY SOURCES ${icu_common_sources})
++set_property(TARGET icu_common PROPERTY C_VISIBILITY_PRESET hidden)
++target_sources(icu_common PRIVATE ${icu_data_dir}/icudt78l_dat.c)
++find_package(Threads REQUIRED)
++target_link_libraries(icu_common PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+diff --git a/cmake/IcuDataFilter.json b/cmake/IcuDataFilter.json
+new file mode 100644
+index 00000000000..5dc766ab923
+--- /dev/null
++++ b/cmake/IcuDataFilter.json
+@@ -0,0 +1,20 @@
++{
++    "strategy": "additive",
++    "usePoolBundle": false,
++    "featureFilters": {
++        "brkitr_rules": "include",
++        "brkitr_dictionaries": "include",
++        "brkitr_tree": "include",
++        "locales_tree": "include",
++        "cnvalias": "include",
++        "ulayout": "include",
++        "uemoji": "include",
++        "normalization": "include",
++        "misc": "include",
++        "curr_tree": "include",
++        "rbnf_tree": "include",
++        "curr_supplemental": "include",
++        "zone_tree": "include",
++        "zone_supplemental": "include"
++    }
++}
+diff --git a/cmake/icu-host/CMakeLists.txt b/cmake/icu-host/CMakeLists.txt
+new file mode 100644
+index 00000000000..e6ca1fe197f
+--- /dev/null
++++ b/cmake/icu-host/CMakeLists.txt
+@@ -0,0 +1,42 @@
++cmake_minimum_required(VERSION 3.20)
++project(AnyPS5IcuHost LANGUAGES C CXX)
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
++add_compile_definitions(U_STATIC_IMPLEMENTATION)
++function(icu_sources result directory)
++    file(STRINGS ${ICU_SOURCE_DIR}/${directory}/sources.txt names)
++    list(TRANSFORM names PREPEND ${ICU_SOURCE_DIR}/${directory}/)
++    set(${result} ${names} PARENT_SCOPE)
++endfunction()
++icu_sources(common common)
++add_library(host_common STATIC ${common} ${ICU_SOURCE_DIR}/stubdata/stubdata.cpp)
++target_compile_definitions(host_common PRIVATE U_COMMON_IMPLEMENTATION)
++target_include_directories(host_common PUBLIC ${ICU_SOURCE_DIR}/common)
++find_package(Threads REQUIRED)
++target_link_libraries(host_common PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
++icu_sources(i18n i18n)
++add_library(host_i18n STATIC ${i18n})
++target_compile_definitions(host_i18n PRIVATE U_I18N_IMPLEMENTATION)
++target_include_directories(host_i18n PUBLIC ${ICU_SOURCE_DIR}/i18n)
++target_link_libraries(host_i18n PUBLIC host_common)
++icu_sources(toolutil tools/toolutil)
++add_library(host_toolutil STATIC ${toolutil})
++target_compile_definitions(host_toolutil PRIVATE U_TOOLUTIL_IMPLEMENTATION)
++target_include_directories(host_toolutil PUBLIC ${ICU_SOURCE_DIR}/tools/toolutil)
++target_link_libraries(host_toolutil PUBLIC host_i18n)
++foreach(tool genbrk gendict genrb gencnval icupkg genccode)
++    icu_sources(sources tools/${tool})
++    add_executable(${tool} ${sources})
++    target_link_libraries(${tool} PRIVATE host_toolutil)
++    set_target_properties(${tool} PROPERTIES LINKER_LANGUAGE CXX)
++    if(WIN32)
++        target_link_libraries(${tool} PRIVATE advapi32)
++        set_target_properties(${tool} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/${tool}/host)
++        foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
++            set_target_properties(${tool} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${config} ${CMAKE_BINARY_DIR}/bin/${tool}/host)
++        endforeach()
++        if(MINGW)
++            target_link_options(${tool} PRIVATE -static -static-libgcc -static-libstdc++)
++        endif()
++    endif()
++endforeach()
+diff --git a/core/libs/prx/libSceIcu/CMakeLists.txt b/core/libs/prx/libSceIcu/CMakeLists.txt
+index 747d8e0c319..4e6dbc636d0 100644
+--- a/core/libs/prx/libSceIcu/CMakeLists.txt
++++ b/core/libs/prx/libSceIcu/CMakeLists.txt
+@@ -769,6 +769,7 @@ if(BUILD_TESTING)
+         tests/Collator.cpp
+         tests/DataMemoryClose.cpp
+         tests/DateFormat.cpp
++        tests/DateFormatBehavior.cpp
+         tests/DateIntervalFormat.cpp
+         tests/DateTimePatternGenerator.cpp
+         tests/FieldPositionIterator.cpp
+@@ -788,7 +789,7 @@ if(BUILD_TESTING)
+     list(TRANSFORM ICU_RECOVERED_TESTS PREPEND ${CMAKE_CURRENT_SOURCE_DIR}/)
+     add_test_executable(guest_icu_recovered_signatures_tests ${ICU_RECOVERED_TESTS})
+     target_include_directories(guest_icu_recovered_signatures_tests PRIVATE ${LIBS_INCLUDE_DIR})
+-    target_link_libraries(guest_icu_recovered_signatures_tests PRIVATE libSceIcu icu_common)
++    target_link_libraries(guest_icu_recovered_signatures_tests PRIVATE libSceIcu icu_i18n)
+     configure_windows_unwind(guest_icu_recovered_signatures_tests)
+     add_test(NAME guest_icu_recovered_signatures COMMAND guest_icu_recovered_signatures_tests)
+     set_tests_properties(guest_icu_recovered_signatures PROPERTIES TIMEOUT 30)
+@@ -830,11 +831,11 @@ if(BUILD_TESTING)
+     target_include_directories(guest_icu_open_standard_names_tests PRIVATE ${LIBS_INCLUDE_DIR})
+     target_link_libraries(guest_icu_open_standard_names_tests PRIVATE libSceIcu icu_common)
+     configure_windows_unwind(guest_icu_open_standard_names_tests)
+-    add_test(NAME guest_icu_open_standard_names_reduced COMMAND guest_icu_open_standard_names_tests)
++    add_test(NAME guest_icu_open_standard_names_bundled COMMAND guest_icu_open_standard_names_tests)
+     add_test(NAME guest_icu_open_standard_names_full COMMAND guest_icu_open_standard_names_tests full)
+-    set_tests_properties(guest_icu_open_standard_names_reduced guest_icu_open_standard_names_full PROPERTIES TIMEOUT 20)
++    set_tests_properties(guest_icu_open_standard_names_bundled guest_icu_open_standard_names_full PROPERTIES TIMEOUT 20)
+     if(WIN32)
+-        set_tests_properties(guest_icu_open_standard_names_reduced guest_icu_open_standard_names_full PROPERTIES
++        set_tests_properties(guest_icu_open_standard_names_bundled guest_icu_open_standard_names_full PROPERTIES
+             ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceIcu>")
+     endif()
+ endif()
+diff --git a/core/libs/prx/libSceIcu/Configuration.cpp b/core/libs/prx/libSceIcu/Configuration.cpp
+index c86dca8c553..606789ace74 100644
+--- a/core/libs/prx/libSceIcu/Configuration.cpp
++++ b/core/libs/prx/libSceIcu/Configuration.cpp
+@@ -11,6 +11,8 @@
+ #include "prx/libSceIcu/Status.hpp"
+ #include "prx/libc/include/Api.hpp"
+ #include "prx/libc/include/General.hpp"
++#include "unicode/uclean.h"
++#include <cstddef>
+ #include <cstring>
+ #include <cstdint>
+ #include <mutex>
+@@ -28,6 +30,7 @@ struct MemoryFunctions {
+     Icu::MemoryFree release = nullptr;
+ };
+ 
++std::mutex NativeLock;
+ std::mutex MemoryLock;
+ MemoryFunctions Memory;
+ const std::int32_t ZeroMemory[] = {0, 0, 0, 0, 0, 0};
+@@ -48,6 +51,22 @@ void Release(void* memory) {
+     if (functions.release) functions.release(functions.context, memory);
+     else free_nid_postfix(memory);
+ }
++
++void* U_CALLCONV NativeAllocate(const void*, std::size_t size) {
++    const MemoryFunctions functions = CurrentMemory();
++    return functions.allocate(functions.context, size);
++}
++
++void* U_CALLCONV NativeReallocate(const void*, void* pointer, std::size_t size) {
++    const MemoryFunctions functions = CurrentMemory();
++    return functions.reallocate(functions.context, pointer, size);
++}
++
++void U_CALLCONV NativeRelease(const void*, void* pointer) {
++    const MemoryFunctions functions = CurrentMemory();
++    functions.release(functions.context, pointer);
++}
++
+ std::mutex DirectoryLock;
+ std::string DataDirectory;
+ std::string TimeZoneDirectory;
+@@ -104,8 +123,12 @@ void APS5_VABI u_setMemoryFunctions_nid_postfix(const void* context, Icu::Memory
+         *status = Icu::IllegalArgument;
+         return;
+     }
++    const std::lock_guard native(NativeLock);
+     const std::lock_guard lock(MemoryLock);
+-    Memory = {context, allocate, reallocate, release};
++    auto nativeStatus = static_cast<UErrorCode>(*status);
++    u_setMemoryFunctions(nullptr, NativeAllocate, NativeReallocate, NativeRelease, &nativeStatus);
++    *status = nativeStatus;
++    if (U_SUCCESS(nativeStatus)) Memory = {context, allocate, reallocate, release};
+ }
+ 
+ 
+@@ -141,6 +164,8 @@ void APS5_VABI u_setTimeZoneFilesDirectory_nid_postfix(const char* path, std::in
+ 
+ void APS5_VABI u_cleanup_nid_postfix() {
+     {
++        const std::lock_guard native(NativeLock);
++        u_cleanup();
+         const std::lock_guard lock(MemoryLock);
+         Memory = {};
+     }
+diff --git a/core/libs/prx/libSceIcu/DateFormat.cpp b/core/libs/prx/libSceIcu/DateFormat.cpp
+index de52ac020ae..19e3a56a8bc 100644
+--- a/core/libs/prx/libSceIcu/DateFormat.cpp
++++ b/core/libs/prx/libSceIcu/DateFormat.cpp
+@@ -1,90 +1,303 @@
+-#include "prx/libSceIcu/RecoveredSignatures.hpp"
++#include "prx/libSceIcu/DateFormat.hpp"
++#include "prx/libSceIcu/DefaultLocaleName.hpp"
++#include "prx/libSceIcu/FieldPositionIterator.hpp"
+ #include "prx/libSceIcu/Status.hpp"
+-#include "prx/libc/include/General.hpp"
++#include "unicode/udat.h"
++#include <algorithm>
++#include <array>
+ #include <cerrno>
+ #include <cstdint>
++#include <memory>
++#include <mutex>
++#include <string>
++#include <unordered_set>
+ 
+ namespace {
+ 
+-bool Failure(const std::int32_t* status, const char* caller) {
+-    Icu::RequireStatus(status);
+-    const int savedErrno = errno;
+-    std::int32_t value = 0;
+-    const bool ok = GuestCopyIn_nid_no_patch(&value, status, sizeof(value));
+-    errno = savedErrno;
++std::mutex formatMutex;
++std::unordered_set<const UDateFormat*> formats;
++
++void CopyIn(void* to, const void* from, std::size_t size, const char* caller) {
++    const int saved = errno;
++    const bool ok = GuestCopyIn_nid_no_patch(to, from, size);
++    errno = saved;
+     if (!ok) NotImplemented_nid_no_patch(caller);
+-    return value > 0;
+ }
+ 
+-void WriteStatus(std::int32_t* status, std::int32_t value, const char* caller) {
+-    const int savedErrno = errno;
+-    const bool ok = GuestCopyOut_nid_no_patch(status, &value, sizeof(value));
+-    errno = savedErrno;
++void CopyOut(void* to, const void* from, std::size_t size, const char* caller) {
++    const int saved = errno;
++    const bool ok = GuestCopyOut_nid_no_patch(to, from, size);
++    errno = saved;
+     if (!ok) NotImplemented_nid_no_patch(caller);
+ }
+ 
++std::int32_t ReadStatus(const std::int32_t* status, const char* caller) {
++    Icu::RequireStatus(status);
++    std::int32_t value;
++    CopyIn(&value, status, sizeof(value), caller);
++    return value;
+ }
+ 
+-extern "C" {
++void StoreStatus(std::int32_t* status, std::int32_t previous, std::int32_t value, const char* caller) {
++    if (value != previous) CopyOut(status, &value, sizeof(value), caller);
++}
+ 
+-void APS5_VABI udat_close_nid_postfix(UDateFormat* format) {
+-    if (!format) return;
+-    NotImplemented_nid_no_patch(__func__);
++void RequireFormat(const UDateFormat* format, const char* caller) {
++    if (!formats.contains(format)) NotImplemented_nid_no_patch(caller);
+ }
+ 
+-std::int32_t APS5_VABI udat_countSymbols_nid_postfix(const UDateFormat* fmt, std::int32_t) {
+-    if (!fmt) return 0;
+-    NotImplemented_nid_no_patch(__func__);
++bool KnownStyle(std::int32_t style) {
++    return (style >= UDAT_PATTERN && style <= UDAT_SHORT) ||
++           (style >= UDAT_FULL_RELATIVE && style <= UDAT_SHORT_RELATIVE);
+ }
+ 
+-std::int32_t APS5_VABI udat_format_nid_postfix(const UDateFormat*, double, char16_t* result, std::int32_t resultLength, UFieldPosition*, std::int32_t* status) {
+-    if (Failure(status, __func__)) return -1;
+-    if (result == nullptr ? resultLength != 0 : resultLength < 0) {
+-        WriteStatus(status, Icu::IllegalArgument, __func__);
+-        return -1;
++bool KnownSymbol(std::int32_t type) {
++    return type >= UDAT_ERAS && type <= UDAT_AM_PMS_WIDE;
++}
++
++template <typename Char>
++std::basic_string<Char> InputString(const Char* text, std::int32_t length, const char* caller) {
++    std::basic_string<Char> copy;
++    if (!text) return copy;
++    auto address = reinterpret_cast<std::uintptr_t>(text);
++    if (length > 0) {
++        std::array<Char, 256> block;
++        while (length > 0) {
++            const auto units = std::min(length, static_cast<std::int32_t>(block.size()));
++            const auto bytes = units * sizeof(Char);
++            if (bytes - 1 > UINTPTR_MAX - address) NotImplemented_nid_no_patch(caller);
++            CopyIn(block.data(), reinterpret_cast<const void*>(address), bytes, caller);
++            copy.append(block.data(), units);
++            length -= units;
++            if (length && bytes > UINTPTR_MAX - address) NotImplemented_nid_no_patch(caller);
++            address += bytes;
++        }
++    } else if (length == -1) {
++        for (;;) {
++            Char unit;
++            CopyIn(&unit, reinterpret_cast<const void*>(address), sizeof(unit), caller);
++            if (!unit) break;
++            if (address > UINTPTR_MAX - sizeof(Char)) NotImplemented_nid_no_patch(caller);
++            copy.push_back(unit);
++            address += sizeof(Char);
++        }
+     }
+-    NotImplemented_nid_no_patch(__func__);
++    return copy;
+ }
+ 
+-std::int32_t APS5_VABI udat_formatForFields_nid_postfix(const void* format, double dateToFormat, char16_t* result, std::int32_t resultLength, void* fpositer, std::int32_t* status) {
+-    (void)format;
+-    (void)dateToFormat;
+-    (void)fpositer;
+-    if (Failure(status, __func__)) return -1;
+-    if (!result ? resultLength != 0 : resultLength < 0) {
+-        WriteStatus(status, Icu::IllegalArgument, __func__);
++void CopyOverflowWrites(char16_t* destination, const char16_t* zeroFilled, const std::u16string& marked,
++                        const char* caller) {
++    for (std::size_t i = 0; i < marked.size();) {
++        const auto start = i;
++        while (i < marked.size() && (marked[i] != 0xffff || zeroFilled[i] == 0xffff)) ++i;
++        if (i == start) ++i;
++        else CopyOut(destination + start, marked.data() + start, (i - start) * sizeof(char16_t), caller);
++    }
++}
++
++template <typename Operation>
++std::int32_t WriteResult(char16_t* destination, std::int32_t capacity, UErrorCode& error,
++                         const char* caller, Operation operation) {
++    char16_t empty{};
++    if (capacity == 0) return operation(destination ? &empty : nullptr, 0, &error);
++
++    std::array<char16_t, 128> small{};
++    const auto initial = error;
++    auto size = std::min(capacity, static_cast<std::int32_t>(small.size()));
++    auto* buffer = small.data();
++    std::u16string storage;
++    for (;;) {
++        error = initial;
++        const auto length = operation(buffer, size, &error);
++        if (length < 0 || (U_FAILURE(error) && error != U_BUFFER_OVERFLOW_ERROR)) return length;
++        if (length < size || (length == size && size == capacity)) {
++            const auto written = length < size ? length + 1 : length;
++            CopyOut(destination, buffer, written * sizeof(char16_t), caller);
++            return length;
++        }
++        if (size == capacity) {
++            std::u16string marked(capacity, 0xffff);
++            error = initial;
++            const auto actual = operation(marked.data(), capacity, &error);
++            if (actual < 0 || (U_FAILURE(error) && error != U_BUFFER_OVERFLOW_ERROR)) return actual;
++            if (actual <= capacity) {
++                const auto written = actual < capacity ? actual + 1 : actual;
++                CopyOut(destination, marked.data(), written * sizeof(char16_t), caller);
++            } else {
++                CopyOverflowWrites(destination, buffer, marked, caller);
++            }
++            return actual;
++        }
++        size = length < capacity ? length + 1 : capacity;
++        storage.assign(size, 0);
++        buffer = storage.data();
++    }
++}
++
++template <typename Action>
++std::int32_t FormatResult(char16_t* result, std::int32_t capacity, std::int32_t* status,
++                          const char* caller, Action action) {
++    const auto incoming = ReadStatus(status, caller);
++    if (incoming > 0) return -1;
++    if (capacity < 0 || (!result && capacity != 0)) {
++        StoreStatus(status, incoming, U_ILLEGAL_ARGUMENT_ERROR, caller);
+         return -1;
+     }
+-    NotImplemented_nid_no_patch(__func__);
++    auto error = static_cast<UErrorCode>(incoming);
++    std::int32_t length = -1;
++    try {
++        const std::lock_guard lock(formatMutex);
++        length = action(error);
++    } catch (const std::bad_alloc&) {
++        error = U_MEMORY_ALLOCATION_ERROR;
++    }
++    StoreStatus(status, incoming, error, caller);
++    return length;
+ }
+ 
+-const UCalendar* APS5_VABI udat_getCalendar_nid_postfix(const UDateFormat*) {
+-    NotImplemented_nid_no_patch(__func__);
+ }
+ 
+-std::int32_t APS5_VABI udat_getSymbols_nid_postfix(const void* fmt, std::int32_t, std::int32_t, char16_t*, std::int32_t, std::int32_t*) {
+-    if (!fmt) return -1;
+-    NotImplemented_nid_no_patch(__func__);
++extern "C" {
++
++void APS5_VABI udat_close_nid_postfix(UDateFormat* format) {
++    if (!format) return;
++    const std::lock_guard lock(formatMutex);
++    if (!formats.erase(format)) NotImplemented_nid_no_patch(__func__);
++    udat_close(format);
+ }
+ 
+-UDateFormat* APS5_VABI udat_open_nid_postfix(std::int32_t, std::int32_t, const char*, const char16_t*, std::int32_t,
+-                                                        const char16_t*, std::int32_t, std::int32_t* status) {
+-    if (!status) APS5_INVALID_ARG_EX;
+-    if (Failure(status, __func__)) return nullptr;
+-    NotImplemented_nid_no_patch(__func__);
++std::int32_t APS5_VABI udat_countSymbols_nid_postfix(const UDateFormat* format, std::int32_t type) {
++    if (!format) return 0;
++    const std::lock_guard lock(formatMutex);
++    RequireFormat(format, __func__);
++    if (!KnownSymbol(type)) return 0;
++    return udat_countSymbols(format, static_cast<UDateFormatSymbolType>(type));
+ }
+ 
+-std::int32_t APS5_VABI udat_toPattern_nid_postfix(const UDateFormat* fmt, std::int8_t, char16_t* result, std::int32_t resultLength, std::int32_t* status) {
+-    if (Failure(status, __func__)) return -1;
+-    if (!result ? resultLength != 0 : resultLength < 0) {
+-        WriteStatus(status, Icu::IllegalArgument, __func__);
+-        return -1;
++std::int32_t APS5_VABI udat_format_nid_postfix(const UDateFormat* format, double date, char16_t* result,
++                                              std::int32_t capacity, UFieldPosition* position, std::int32_t* status) {
++    const char* caller = __func__;
++    return FormatResult(result, capacity, status, caller, [&](UErrorCode& error) {
++        RequireFormat(format, caller);
++        UFieldPosition field{};
++        if (position) CopyIn(&field.field, position, sizeof(field.field), caller);
++        const auto length = WriteResult(result, capacity, error, caller, [&](char16_t* out, int size, UErrorCode* ec) {
++            return udat_format(format, date, out, size, position ? &field : nullptr, ec);
++        });
++        if (position) {
++            CopyOut(&position->beginIndex, &field.beginIndex, sizeof(field.beginIndex), caller);
++            CopyOut(&position->endIndex, &field.endIndex, sizeof(field.endIndex), caller);
++        }
++        return length;
++    });
++}
++
++std::int32_t APS5_VABI udat_formatForFields_nid_postfix(const void* format, double date, char16_t* result,
++                                                       std::int32_t capacity, void* iterator, std::int32_t* status) {
++    const char* caller = __func__;
++    return FormatResult(result, capacity, status, caller, [&](UErrorCode& error) {
++        const auto* fmt = static_cast<const UDateFormat*>(format);
++        RequireFormat(fmt, caller);
++        auto* fields = static_cast<UFieldPositionIterator*>(iterator);
++        std::unique_lock<std::mutex> lock;
++        if (fields) lock = Icu::LockFieldPositionIterator_nid_no_patch(fields, caller);
++        return WriteResult(result, capacity, error, caller, [&](char16_t* out, int size, UErrorCode* ec) {
++            return udat_formatForFields(fmt, date, out, size, fields, ec);
++        });
++    });
++}
++
++const UCalendar* APS5_VABI udat_getCalendar_nid_postfix(const UDateFormat* format) {
++    const std::lock_guard lock(formatMutex);
++    RequireFormat(format, __func__);
++    return udat_getCalendar(format);
++}
++
++std::int32_t APS5_VABI udat_getSymbols_nid_postfix(const void* format, std::int32_t type, std::int32_t index,
++                                                 char16_t* result, std::int32_t capacity, std::int32_t* status) {
++    if (!format) return -1;
++    const char* caller = __func__;
++    const std::lock_guard lock(formatMutex);
++    const auto* fmt = static_cast<const UDateFormat*>(format);
++    RequireFormat(fmt, caller);
++    if (!KnownSymbol(type)) {
++        if (index < 0) NotImplemented_nid_no_patch(caller);
++        return 0;
+     }
+-    if (!fmt) {
+-        WriteStatus(status, Icu::IllegalArgument, __func__);
+-        return -1;
++    const auto symbol = static_cast<UDateFormatSymbolType>(type);
++    if (symbol != UDAT_LOCALIZED_CHARS) {
++        if (index >= udat_countSymbols(fmt, symbol)) return 0;
++        if (index < 0) NotImplemented_nid_no_patch(caller);
++    }
++    const auto incoming = ReadStatus(status, caller);
++    auto error = static_cast<UErrorCode>(incoming);
++    std::int32_t length;
++    try {
++        if (incoming > 0 || capacity < 0 || !result) {
++            length = udat_getSymbols(fmt, symbol, index, nullptr, capacity, &error);
++        } else {
++            length = WriteResult(result, capacity, error, caller, [&](char16_t* out, int size, UErrorCode* ec) {
++                return udat_getSymbols(fmt, symbol, index, out, size, ec);
++            });
++        }
++    } catch (const std::bad_alloc&) {
++        length = -1;
++        error = U_MEMORY_ALLOCATION_ERROR;
+     }
+-    NotImplemented_nid_no_patch(__func__);
++    StoreStatus(status, incoming, error, caller);
++    return length;
++}
++
++UDateFormat* APS5_VABI udat_open_nid_postfix(std::int32_t timeStyle, std::int32_t dateStyle, const char* locale,
++                                            const char16_t* zone, std::int32_t zoneLength, const char16_t* pattern,
++                                            std::int32_t patternLength, std::int32_t* status) {
++    if (!status) APS5_INVALID_ARG_EX;
++    const auto incoming = ReadStatus(status, __func__);
++    if (incoming > 0) return nullptr;
++    if (!KnownStyle(timeStyle) || (timeStyle != UDAT_PATTERN && !KnownStyle(dateStyle))) {
++        NotImplemented_nid_no_patch(__func__);
++    }
++    auto error = static_cast<UErrorCode>(incoming);
++    try {
++        const auto name = InputString(locale, -1, __func__);
++        const auto zoneId = InputString(zone, zoneLength, __func__);
++        const auto pat = InputString(timeStyle == UDAT_PATTERN ? pattern : nullptr, patternLength, __func__);
++        std::unique_ptr<UDateFormat, decltype(&udat_close)> format(
++            udat_open(static_cast<UDateFormatStyle>(timeStyle), static_cast<UDateFormatStyle>(timeStyle == UDAT_PATTERN ? UDAT_PATTERN : dateStyle),
++                      locale ? name.c_str() : Icu::DefaultLocaleName(), zone ? zoneId.c_str() : nullptr, zoneLength,
++                      pattern ? pat.c_str() : nullptr, patternLength, &error), &udat_close);
++        if (!format) {
++            StoreStatus(status, incoming, error, __func__);
++            return nullptr;
++        }
++        const std::lock_guard lock(formatMutex);
++        formats.insert(format.get());
++        try {
++            StoreStatus(status, incoming, error, __func__);
++        } catch (...) {
++            formats.erase(format.get());
++            throw;
++        }
++        return format.release();
++    } catch (const std::bad_alloc&) {
++        StoreStatus(status, incoming, U_MEMORY_ALLOCATION_ERROR, __func__);
++        return nullptr;
++    }
++}
++
++std::int32_t APS5_VABI udat_toPattern_nid_postfix(const UDateFormat* format, std::int8_t localized, char16_t* result,
++                                                 std::int32_t capacity, std::int32_t* status) {
++    const char* caller = __func__;
++    return FormatResult(result, capacity, status, caller, [&](UErrorCode& error) {
++        if (!format) {
++            error = U_ILLEGAL_ARGUMENT_ERROR;
++            return -1;
++        }
++        RequireFormat(format, caller);
++        return WriteResult(result, capacity, error, caller, [&](char16_t* out, int size, UErrorCode* ec) {
++            return udat_toPattern(format, localized, out, size, ec);
++        });
++    });
+ }
+ 
+ }
+diff --git a/core/libs/prx/libSceIcu/DateFormat.hpp b/core/libs/prx/libSceIcu/DateFormat.hpp
+new file mode 100644
+index 00000000000..e02c3e19820
+--- /dev/null
++++ b/core/libs/prx/libSceIcu/DateFormat.hpp
+@@ -0,0 +1,22 @@
++#pragma once
++
++#include "prx/libc/include/general/VabiMacros.hpp"
++#include <cstdint>
++
++using UDateFormat = void*;
++using UCalendar = void*;
++struct UFieldPosition;
++
++extern "C" {
++
++void APS5_VABI udat_close_nid_postfix(UDateFormat*);
++std::int32_t APS5_VABI udat_countSymbols_nid_postfix(const UDateFormat* fmt, std::int32_t type);
++std::int32_t APS5_VABI udat_format_nid_postfix(const UDateFormat* format, double dateToFormat, char16_t* result, std::int32_t resultLength, UFieldPosition* position, std::int32_t* status);
++std::int32_t APS5_VABI udat_formatForFields_nid_postfix(const void* format, double dateToFormat, char16_t* result, std::int32_t resultLength, void* fpositer, std::int32_t* status);
++const UCalendar* APS5_VABI udat_getCalendar_nid_postfix(const UDateFormat* fmt);
++std::int32_t APS5_VABI udat_getSymbols_nid_postfix(const void* fmt, std::int32_t type, std::int32_t index, char16_t* result,
++                                                   std::int32_t resultLength, std::int32_t* status);
++UDateFormat* APS5_VABI udat_open_nid_postfix(std::int32_t, std::int32_t, const char*, const char16_t*, std::int32_t, const char16_t*, std::int32_t, std::int32_t*);
++std::int32_t APS5_VABI udat_toPattern_nid_postfix(const UDateFormat* fmt, std::int8_t localized, char16_t* result, std::int32_t resultLength, std::int32_t* status);
++
++}
+diff --git a/core/libs/prx/libSceIcu/FieldPositionIterator.cpp b/core/libs/prx/libSceIcu/FieldPositionIterator.cpp
+index cd4587691ae..91339f3cb93 100644
+--- a/core/libs/prx/libSceIcu/FieldPositionIterator.cpp
++++ b/core/libs/prx/libSceIcu/FieldPositionIterator.cpp
+@@ -8,6 +8,7 @@
+ */
+ // https://github.com/unicode-org/icu/blob/049e0d6a420629ac7db77256987d083a563287b5/icu4c/source/i18n/ufieldpositer.cpp
+ 
++#include "prx/libSceIcu/FieldPositionIterator.hpp"
+ #include "prx/libSceIcu/RecoveredSignatures.hpp"
+ #include "prx/libc/include/General.hpp"
+ #include "prx/libc/include/GuestArena.hpp"
+@@ -32,6 +33,12 @@ void WriteStatus(std::int32_t* destination, std::int32_t previous, std::int32_t
+ 
+ }
+ 
++std::unique_lock<std::mutex> Icu::LockFieldPositionIterator_nid_no_patch(UFieldPositionIterator* iterator, const char* caller) {
++    std::unique_lock lock(iteratorMutex);
++    if (!iterators.contains(iterator)) NotImplemented_nid_no_patch(caller);
++    return lock;
++}
++
+ extern "C" {
+ 
+ void APS5_VABI ufieldpositer_close_nid_postfix(UFieldPositionIterator* fpositer) {
+@@ -62,8 +69,7 @@ UFieldPositionIterator* APS5_VABI ufieldpositer_open_nid_postfix(std::int32_t* s
+ 
+ std::int32_t APS5_VABI ufieldpositer_next_nid_postfix(UFieldPositionIterator* fpositer, std::int32_t* beginIndex,
+                                                     std::int32_t* endIndex) {
+-    const std::lock_guard lock(iteratorMutex);
+-    if (!iterators.contains(fpositer)) NotImplemented_nid_no_patch(__func__);
++    const auto lock = Icu::LockFieldPositionIterator_nid_no_patch(fpositer, __func__);
+     icu::FieldPosition field;
+     if (!reinterpret_cast<icu::FieldPositionIterator*>(fpositer)->next(field)) return -1;
+     const GuestArena::HostWrite beginAccess(beginIndex, beginIndex ? sizeof(*beginIndex) : 0);
+diff --git a/core/libs/prx/libSceIcu/FieldPositionIterator.hpp b/core/libs/prx/libSceIcu/FieldPositionIterator.hpp
+new file mode 100644
+index 00000000000..95a21de4d14
+--- /dev/null
++++ b/core/libs/prx/libSceIcu/FieldPositionIterator.hpp
+@@ -0,0 +1,21 @@
++#pragma once
++
++#include "prx/libc/include/general/VabiMacros.hpp"
++#include <cstdint>
++#include <mutex>
++
++struct UFieldPositionIterator;
++
++namespace Icu {
++
++std::unique_lock<std::mutex> LockFieldPositionIterator_nid_no_patch(UFieldPositionIterator* iterator, const char* caller);
++
++}
++
++extern "C" {
++
++std::int32_t APS5_VABI ufieldpositer_next_nid_postfix(UFieldPositionIterator*, std::int32_t*, std::int32_t*);
++void APS5_VABI ufieldpositer_close_nid_postfix(UFieldPositionIterator*);
++UFieldPositionIterator* APS5_VABI ufieldpositer_open_nid_postfix(std::int32_t*);
++
++}
+diff --git a/core/libs/prx/libSceIcu/RecoveredSignatures.hpp b/core/libs/prx/libSceIcu/RecoveredSignatures.hpp
+index 532af845507..f83f36e1b17 100644
+--- a/core/libs/prx/libSceIcu/RecoveredSignatures.hpp
++++ b/core/libs/prx/libSceIcu/RecoveredSignatures.hpp
+@@ -1,19 +1,17 @@
+ #pragma once
+ 
+ #include "prx/libc/include/general/VabiMacros.hpp"
++#include "prx/libSceIcu/DateFormat.hpp"
++#include "prx/libSceIcu/FieldPositionIterator.hpp"
+ #include "prx/libSceIcu/Enumeration.hpp"
+ #include <cstdint>
+ 
+ struct UBreakIterator;
+-struct UCalendar;
+ struct UCollator;
+ struct UConstrainedFieldPosition;
+-struct UDateFormat;
+ struct UDateIntervalFormat;
+ struct UDateTimePatternGenerator;
+ struct UDataMemory;
+-struct UFieldPosition;
+-struct UFieldPositionIterator;
+ struct UFormattedDateInterval;
+ struct UFormattedList;
+ struct UFormattedNumber;
+@@ -112,16 +110,6 @@ USet* APS5_VABI ucol_getTailoredSet_nid_postfix(const UCollator* coll, std::int3
+ UCollator* APS5_VABI ucol_open_nid_postfix(const char* locale, std::int32_t* status);
+ void APS5_VABI ucol_setAttribute_nid_postfix(UCollator* coll, UColAttribute attr, UColAttributeValue value, std::int32_t* status);
+ 
+-void APS5_VABI udat_close_nid_postfix(UDateFormat*);
+-std::int32_t APS5_VABI udat_countSymbols_nid_postfix(const UDateFormat* fmt, std::int32_t type);
+-std::int32_t APS5_VABI udat_format_nid_postfix(const UDateFormat* format, double dateToFormat, char16_t* result, std::int32_t resultLength, UFieldPosition* position, std::int32_t* status);
+-std::int32_t APS5_VABI udat_formatForFields_nid_postfix(const void* format, double dateToFormat, char16_t* result, std::int32_t resultLength, void* fpositer, std::int32_t* status);
+-const UCalendar* APS5_VABI udat_getCalendar_nid_postfix(const UDateFormat* fmt);
+-std::int32_t APS5_VABI udat_getSymbols_nid_postfix(const void* fmt, std::int32_t type, std::int32_t index, char16_t* result,
+-                                                   std::int32_t resultLength, std::int32_t* status);
+-UDateFormat* APS5_VABI udat_open_nid_postfix(std::int32_t, std::int32_t, const char*, const char16_t*, std::int32_t, const char16_t*, std::int32_t, std::int32_t*);
+-std::int32_t APS5_VABI udat_toPattern_nid_postfix(const UDateFormat* fmt, std::int8_t localized, char16_t* result, std::int32_t resultLength, std::int32_t* status);
+-
+ void APS5_VABI udatpg_close_nid_postfix(UDateTimePatternGenerator*);
+ std::int32_t APS5_VABI udatpg_getBestPattern_nid_postfix(UDateTimePatternGenerator* dtpg, const char16_t* skeleton, std::int32_t length,
+                                                          char16_t* bestPattern, std::int32_t capacity, std::int32_t* status);
+@@ -151,10 +139,6 @@ UDateIntervalFormat* APS5_VABI udtitvfmt_open_nid_postfix(const char* locale, co
+ UFormattedDateInterval* APS5_VABI udtitvfmt_openResult_nid_postfix(std::int32_t* status);
+ const UFormattedValue* APS5_VABI udtitvfmt_resultAsValue_nid_postfix(const UFormattedDateInterval* result, std::int32_t* status);
+ 
+-std::int32_t APS5_VABI ufieldpositer_next_nid_postfix(UFieldPositionIterator*, std::int32_t*, std::int32_t*);
+-void APS5_VABI ufieldpositer_close_nid_postfix(UFieldPositionIterator*);
+-UFieldPositionIterator* APS5_VABI ufieldpositer_open_nid_postfix(std::int32_t*);
+-
+ const char16_t* APS5_VABI ufmtval_getString_nid_postfix(const UFormattedValue* ufmtval, std::int32_t* pLength, std::int32_t* ec);
+ std::int8_t APS5_VABI ufmtval_nextPosition_nid_postfix(const UFormattedValue* ufmtval, UConstrainedFieldPosition* ucfpos, std::int32_t* ec);
+ 
+diff --git a/core/libs/prx/libSceIcu/tests/DateFormat.cpp b/core/libs/prx/libSceIcu/tests/DateFormat.cpp
+index 2bbc245cbe5..d16bebfdd13 100644
+--- a/core/libs/prx/libSceIcu/tests/DateFormat.cpp
++++ b/core/libs/prx/libSceIcu/tests/DateFormat.cpp
+@@ -331,23 +331,16 @@ void FailureShortCircuit() {
+     }
+ }
+ 
+-void NonFailureThrows() {
+-    const char16_t zone[] = u"UTC";
+-    const char16_t pattern[] = u"yyyy-MM-dd";
+-    RequireThrows<std::invalid_argument>([&] {
+-        udat_open_nid_postfix(0, 0, "en_US", zone, 3, pattern, 10, nullptr);
++void OpenWithWarnings() {
++    RequireThrows<std::invalid_argument>([] {
++        udat_open_nid_postfix(0, 0, "en_US", u"UTC", 3, nullptr, 0, nullptr);
+     });
+-    for (std::int32_t incoming : {std::numeric_limits<std::int32_t>::min(), -128, -124, -1, 0}) {
+-        for (std::int32_t timeStyle : {-2, 0, 2}) {
+-            std::int32_t status = incoming;
+-            RequireThrows<std::exception>([&] {
+-                udat_open_nid_postfix(timeStyle, 0, "en_US", zone, 3, pattern, 10, &status);
+-            });
+-            Require(status == incoming);
+-            RequireThrows<std::exception>([&] {
+-                udat_open_nid_postfix(timeStyle, 0, nullptr, nullptr, -1, nullptr, -1, &status);
+-            });
+-            Require(status == incoming);
++    for (std::int32_t incoming : {-128, -124, -1, 0}) {
++        for (const char* locale : {"en_US", static_cast<const char*>(nullptr)}) {
++            auto status = incoming;
++            auto* format = udat_open_nid_postfix(-2, -2, locale, u"UTC", 3, u"yyyy-MM-dd", 10, &status);
++            Require(format && status <= 0);
++            udat_close_nid_postfix(format);
+         }
+     }
+ }
+@@ -356,7 +349,7 @@ void NonFailureThrows() {
+ 
+ void Run() {
+     FailureShortCircuit();
+-    NonFailureThrows();
++    OpenWithWarnings();
+ }
+ 
+ } // namespace UdatOpen
+diff --git a/core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp b/core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp
+new file mode 100644
+index 00000000000..c81d4e11da1
+--- /dev/null
++++ b/core/libs/prx/libSceIcu/tests/DateFormatBehavior.cpp
+@@ -0,0 +1,226 @@
++#include "prx/libSceIcu/Configuration.hpp"
++#include "prx/libSceIcu/DateFormat.hpp"
++#include "prx/libSceIcu/FieldPositionIterator.hpp"
++#include "prx/libSceIcu/tests/RecoveredSignatureChecks.hpp"
++#include "unicode/udat.h"
++#include <array>
++#include <cstdlib>
++#include <memory>
++#include <string>
++#include <string_view>
++
++namespace {
++
++using IcuRecoveredTest::Require;
++using IcuRecoveredTest::RequireThrows;
++using GuestFormat = std::unique_ptr<UDateFormat, decltype(&udat_close_nid_postfix)>;
++using ReferenceFormat = std::unique_ptr<UDateFormat, decltype(&udat_close)>;
++
++struct AllocatorCounts {
++    mutable unsigned allocations = 0;
++    mutable unsigned releases = 0;
++};
++
++void* APS5_VABI Allocate_nid_no_patch(const void* context, std::size_t size) {
++    ++static_cast<const AllocatorCounts*>(context)->allocations;
++    return std::malloc(size);
++}
++
++void* APS5_VABI Reallocate_nid_no_patch(const void*, void* pointer, std::size_t size) {
++    return std::realloc(pointer, size);
++}
++
++void APS5_VABI Release_nid_no_patch(const void* context, void* pointer) {
++    if (pointer) ++static_cast<const AllocatorCounts*>(context)->releases;
++    std::free(pointer);
++}
++
++void GuestAllocator() {
++    u_cleanup_nid_postfix();
++    AllocatorCounts counts;
++    std::int32_t status = 0;
++    u_setMemoryFunctions_nid_postfix(&counts, Allocate_nid_no_patch, Reallocate_nid_no_patch, Release_nid_no_patch, &status);
++    Require(status == 0);
++    const auto beforeOpen = counts.allocations;
++    GuestFormat format(udat_open_nid_postfix(UDAT_SHORT, UDAT_SHORT, "en_US", u"UTC", 3, nullptr, 0, &status),
++                       &udat_close_nid_postfix);
++    Require(format && status <= 0 && counts.allocations > beforeOpen);
++    const auto beforeClose = counts.releases;
++    format.reset();
++    Require(counts.releases > beforeClose);
++    u_cleanup_nid_postfix();
++}
++
++struct Pair {
++    GuestFormat guest;
++    ReferenceFormat reference;
++};
++
++Pair Open(const char* locale, const char16_t* zone, int zoneLength, const char16_t* pattern, int patternLength,
++          UDateFormatStyle time = UDAT_PATTERN, UDateFormatStyle date = UDAT_PATTERN) {
++    std::int32_t status = 0;
++    UErrorCode error = U_ZERO_ERROR;
++    GuestFormat guest(udat_open_nid_postfix(time, date, locale, zone, zoneLength, pattern, patternLength, &status),
++                      &udat_close_nid_postfix);
++    ReferenceFormat reference(udat_open(time, date, locale, zone, zoneLength, pattern, patternLength, &error), &udat_close);
++    Require(guest && reference && U_SUCCESS(error) && status == error);
++    return {std::move(guest), std::move(reference)};
++}
++
++template <typename Guest, typename Reference>
++void Compare(int capacity, int incoming, Guest guest, Reference reference) {
++    std::array<char16_t, 512> actual;
++    actual.fill(0xa55a);
++    auto expected = actual;
++    auto status = static_cast<std::int32_t>(incoming);
++    auto error = static_cast<UErrorCode>(incoming);
++    const int length = guest(capacity < 0 ? nullptr : actual.data(), capacity < 0 ? 0 : capacity, &status);
++    Require(length == reference(capacity < 0 ? nullptr : expected.data(), capacity < 0 ? 0 : capacity, &error));
++    Require(status == error);
++    Require(actual == expected);
++}
++
++void CompareFormats(const Pair& pair, double date) {
++    for (int capacity : {-1, 0, 1, 4, 9, 10, 11, 128, 512}) {
++        for (int incoming : {-128, -124, 0, 15}) {
++            UFieldPosition pos{UDAT_YEAR_FIELD, -43, -17};
++            auto expected = pos;
++            Compare(capacity, incoming,
++                [&](auto* out, int size, auto* status) {
++                    return udat_format_nid_postfix(pair.guest.get(), date, out, size, &pos, status);
++                },
++                [&](auto* out, int size, auto* error) {
++                    return udat_format(pair.reference.get(), date, out, size, &expected, error);
++                });
++            Require(pos.field == expected.field && pos.beginIndex == expected.beginIndex && pos.endIndex == expected.endIndex);
++        }
++        for (bool localized : {false, true}) {
++            Compare(capacity, 0,
++                [&](auto* out, int size, auto* status) {
++                    return udat_toPattern_nid_postfix(pair.guest.get(), localized, out, size, status);
++                },
++                [&](auto* out, int size, auto* error) {
++                    return udat_toPattern(pair.reference.get(), localized, out, size, error);
++                });
++        }
++    }
++}
++
++void Symbols(const Pair& pair) {
++    for (int type = UDAT_ERAS; type <= UDAT_AM_PMS_WIDE; ++type) {
++        const auto symbol = static_cast<UDateFormatSymbolType>(type);
++        const auto count = udat_countSymbols(pair.reference.get(), symbol);
++        Require(udat_countSymbols_nid_postfix(pair.guest.get(), type) == count);
++        for (int index : {0, count - 1, count, count + 1}) {
++            if (index < 0 && symbol != UDAT_LOCALIZED_CHARS) continue;
++            for (int capacity : {-1, 0, 1, 512}) {
++                for (int incoming : {0, -124, 15}) {
++                    Compare(capacity, incoming,
++                        [&](auto* out, int size, auto* status) {
++                            return udat_getSymbols_nid_postfix(pair.guest.get(), type, index, out, size, status);
++                        },
++                        [&](auto* out, int size, auto* error) {
++                            return udat_getSymbols(pair.reference.get(), symbol, index, out, size, error);
++                        });
++                }
++            }
++        }
++    }
++}
++
++void Fields(const Pair& pair) {
++    std::int32_t status = 0;
++    UErrorCode error = U_ZERO_ERROR;
++    auto* fields = ufieldpositer_open_nid_postfix(&status);
++    auto* reference = ufieldpositer_open(&error);
++    Require(fields && reference);
++    for (int capacity : {-1, 4, 512}) {
++        Compare(capacity, 0,
++            [&](auto* out, int size, auto* ec) {
++                return udat_formatForFields_nid_postfix(pair.guest.get(), 0, out, size, fields, ec);
++            },
++            [&](auto* out, int size, auto* ec) {
++                return udat_formatForFields(pair.reference.get(), 0, out, size, reference, ec);
++            });
++        int count = 0;
++        for (;;) {
++            int begin = -1, end = -1, rb = -1, re = -1;
++            const int field = ufieldpositer_next_nid_postfix(fields, &begin, &end);
++            Require(field == ufieldpositer_next(reference, &rb, &re) && begin == rb && end == re);
++            if (field < 0) break;
++            ++count;
++        }
++        Require(count >= 3);
++    }
++    ufieldpositer_close(reference);
++    ufieldpositer_close_nid_postfix(fields);
++    RequireThrows([&] { udat_formatForFields_nid_postfix(pair.guest.get(), 0, nullptr, 0, fields, &status); });
++}
++
++void GuestPointers(const Pair& pair) {
++    auto* bad = reinterpret_cast<char16_t*>(std::uintptr_t{1});
++    std::int32_t status = 0;
++    RequireThrows([&] { udat_open_nid_postfix(-2, -2, "en_US", bad, 3, u"y", 1, &status); });
++    RequireThrows([&] { udat_open_nid_postfix(-2, -2, "en_US", u"UTC", 3, bad, -1, &status); });
++    RequireThrows([&] { udat_open_nid_postfix(-2, -2, reinterpret_cast<const char*>(bad), nullptr, 0, nullptr, 0, &status); });
++    GuestFormat ignored(udat_open_nid_postfix(UDAT_SHORT, UDAT_SHORT, "en_US", u"UTC", 3, bad, INT32_MAX, &status),
++                        &udat_close_nid_postfix);
++    Require(ignored && status <= 0);
++    status = 0;
++    RequireThrows([&] { udat_format_nid_postfix(pair.guest.get(), 0, bad, 64, nullptr, &status); });
++    RequireThrows([&] { udat_format_nid_postfix(pair.guest.get(), 0, nullptr, 0,
++                                               reinterpret_cast<UFieldPosition*>(bad), &status); });
++    status = 0;
++    Require(udat_getSymbols_nid_postfix(pair.guest.get(), UDAT_MONTHS, 0, bad, 1, &status) == 7);
++    Require(status == U_BUFFER_OVERFLOW_ERROR);
++    status = 0;
++    RequireThrows([&] { udat_open_nid_postfix(INT32_MAX, UDAT_LONG, nullptr, nullptr, 0, nullptr, 0, &status); });
++    Require(udat_countSymbols_nid_postfix(pair.guest.get(), INT32_MAX) == 0);
++    Require(udat_getSymbols_nid_postfix(pair.guest.get(), UDAT_MONTHS, 100, bad, 32, nullptr) == 0);
++    RequireThrows([&] { udat_getSymbols_nid_postfix(pair.guest.get(), UDAT_MONTHS, -1, nullptr, 0, &status); });
++}
++
++void KnownDate(const char* locale, const char16_t* zone, const char16_t* pattern, double instant,
++               std::u16string_view expected) {
++    auto pair = Open(locale, zone, -1, pattern, -1);
++    std::array<char16_t, 64> out{};
++    std::int32_t status = 0;
++    const int length = udat_format_nid_postfix(pair.guest.get(), instant, out.data(), INT32_MAX, nullptr, &status);
++    Require(status <= 0 && length == static_cast<int>(expected.size()));
++    Require(std::u16string_view(out.data(), length) == expected && out[length] == 0);
++}
++
++}
++
++void CheckIcuDateFormatBehavior() {
++    GuestAllocator();
++    KnownDate("en_US", u"UTC", u"yyyy-MM-dd", 0, u"1970-01-01");
++    KnownDate("fr_FR", u"UTC", u"MMMM", 0, u"janvier");
++    KnownDate("th_TH@calendar=buddhist", u"Asia/Bangkok", u"yyyy-MM-dd", 0, u"2513-01-01");
++    KnownDate("en_US", u"America/New_York", u"HH:mm XXX", 1710053940000., u"01:59 -05:00");
++    KnownDate("en_US", u"America/New_York", u"HH:mm XXX", 1710054000000., u"03:00 -04:00");
++
++    constexpr char16_t zone[]{u'U', u'T', u'C'};
++    constexpr char16_t pattern[]{u'y', u'y', u'y', u'y', u'-', u'M', u'M', u'-', u'd', u'd'};
++    const auto iso = Open("en_US", zone, 3, pattern, 10);
++    CompareFormats(iso, -1.);
++    Fields(iso);
++    GuestPointers(iso);
++    const auto* calendar = udat_getCalendar_nid_postfix(iso.guest.get());
++    Require(calendar && calendar == udat_getCalendar_nid_postfix(iso.guest.get()));
++    UErrorCode error = U_ZERO_ERROR;
++    Require(ucal_getType(calendar, &error) == std::string_view("gregorian") && U_SUCCESS(error));
++
++    for (auto locale : {"fr_CA", "ar_EG", "ja_JP@calendar=japanese", "fa_IR"}) {
++        auto pair = Open(locale, u"Europe/Paris", -1, nullptr, 0, UDAT_LONG, UDAT_FULL);
++        CompareFormats(pair, 1704067200000.);
++        Symbols(pair);
++    }
++    auto relative = Open("de_DE", u"UTC", -1, nullptr, 0, UDAT_NONE, UDAT_SHORT_RELATIVE);
++    CompareFormats(relative, 0.);
++    auto longPattern = std::u16string(u"'") + std::u16string(200, u'x') + u"' yyyy";
++    CompareFormats(Open("en_US", u"UTC", -1, longPattern.c_str(), -1), 0.);
++    constexpr char16_t embedded[]{u'y', u'\'', 0, u'\'', u'M'};
++    CompareFormats(Open("en_US", nullptr, 0, embedded, 5), 0.);
++    CompareFormats(Open("en_US", u"UTC", -1, u"'\uffff' yyyy/MM/dd", -1), 0.);
++}
+diff --git a/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp b/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp
+index cb9562639d7..35a896be646 100644
+--- a/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp
++++ b/core/libs/prx/libSceIcu/tests/OpenStandardNames.cpp
+@@ -149,14 +149,19 @@ void ReadOnlyPrefailed() {
+     Require(*status == U_ILLEGAL_ARGUMENT_ERROR);
+ }
+ 
+-void ReducedData() {
++void BundledData() {
+     std::int32_t status = 0;
+-    Require(ucnv_openStandardNames_nid_postfix(reinterpret_cast<const char*>(1),
+-                                               reinterpret_cast<const char*>(1), &status) == nullptr);
+-    Require(status == U_FILE_ACCESS_ERROR);
++    bool threw = false;
++    try {
++        ucnv_openStandardNames_nid_postfix(reinterpret_cast<const char*>(1), reinterpret_cast<const char*>(1), &status);
++    } catch (const std::invalid_argument&) {
++        threw = true;
++    }
++    Require(threw);
++    Require(status == 0);
+     status = 0;
+     Require(ucnv_openStandardNames_nid_postfix(nullptr, nullptr, &status) == nullptr);
+-    Require(status == U_FILE_ACCESS_ERROR);
++    Require(status == U_ILLEGAL_ARGUMENT_ERROR);
+ }
+ 
+ std::string NextGuest(UEnumeration* enumeration) {
+@@ -267,6 +272,6 @@ int main(int argc, char**) {
+     Prefailed();
+     NullStatus();
+     ReadOnlyPrefailed();
+-    if (argc == 1) ReducedData();
++    if (argc == 1) BundledData();
+     else FullData();
+ }
+diff --git a/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp b/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp
+index 6d11657c17d..20875da27a8 100644
+--- a/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp
++++ b/core/libs/prx/libSceIcu/tests/RecoveredSignatures.cpp
+@@ -4,6 +4,7 @@ void CheckIcuCalendar();
+ void CheckIcuCollator();
+ void CheckIcuDataMemory();
+ void CheckIcuDateFormat();
++void CheckIcuDateFormatBehavior();
+ void CheckIcuDateTimePatternGenerator();
+ void CheckIcuDateIntervalFormat();
+ void CheckIcuFieldPositionIterator();
+@@ -25,6 +26,7 @@ int main() {
+     CheckIcuCollator();
+     CheckIcuDataMemory();
+     CheckIcuDateFormat();
++    CheckIcuDateFormatBehavior();
+     CheckIcuDateTimePatternGenerator();
+     CheckIcuDateIntervalFormat();
+     CheckIcuFieldPositionIterator();
+diff --git a/docs/dev/BUILD.md b/docs/dev/BUILD.md
+index 549cd2f871a..896778b7564 100644
+--- a/docs/dev/BUILD.md
++++ b/docs/dev/BUILD.md
+@@ -58,6 +58,7 @@ python3 tools/select_tests.py ctest build --output-on-failure
+ ## Requirements
+ 
+ - x86-64, Git, CMake 3.21 or newer (the test build's CMake scripts use `file(COPY_FILE)`, added in CMake 3.21; `CMakeLists.txt` declares 3.20), Ninja, C++20.
++- Python 3, which runs ICU 78.1's data builder ([IcuData.cmake](../../cmake/IcuData.cmake)) and glslang's scripts. ICU's data tools are built for the build host, so a cross build also needs `-DANYPS5_ICU_HOST_C_COMPILER` and `-DANYPS5_ICU_HOST_CXX_COMPILER` (see [CMake flags](#cmake-flags)).
+ - Linux display refresh queries require SDL's XRandR support (`libxrandr-dev` on Debian/Ubuntu; `libXrandr-devel` on Fedora). Bundled SDL configuration fails without it. Keep `SDL_X11_XRANDR` enabled.
+ - Linux: GCC, G++ (`gcc-c++` on Fedora), binutils. SDL's X11 backend requires X11 and Xext development headers (`libx11-dev` and `libxext-dev` on Debian/Ubuntu; `libX11-devel` and `libXext-devel` on Fedora). SDL's Wayland backend requires the Wayland, xkbcommon and EGL development files (`libwayland-dev`, `libxkbcommon-dev` and `libegl-dev` on Debian/Ubuntu; `wayland-devel`, `libxkbcommon-devel` and `mesa-libEGL-devel` on Fedora), and `libdecor-0-dev` (`libdecor-devel`) for window decorations on GNOME. SDL loads both backends at run time and prefers Wayland when `WAYLAND_DISPLAY` is set; `SDL_VIDEODRIVER=x11` selects X11 (XWayland). Titles that bundle their own SDL read `SDL_VIDEODRIVER` too, and some of them fail to start with `x11`. Without the Wayland files configuration still succeeds, and the build uses X11 only. Audio output needs SDL's PipeWire, PulseAudio or ALSA backend, built from their development files (`libpipewire-0.3-dev`, `libpulse-dev` and `libasound2-dev` on Debian/Ubuntu; `pipewire-devel`, `pulseaudio-libs-devel` and `alsa-lib-devel` on Fedora). SDL loads them at run time. Without any of them SDL keeps only its silent dummy and disk drivers, so configuration fails.
+ - Fedora: if CMake reports `Could NOT find Threads`, install `glibc-static` and `libstdc++-static` with `sudo dnf install glibc-static libstdc++-static`, then rerun configuration. The project enables static executable linking, and FFmpeg's thread check needs these libraries.
+@@ -101,7 +102,7 @@ therefore tests the previous binaries and can show no effect at all.
+ 
+ ## Windows setup and troubleshooting
+ 
+-The full build also requires Python 3 for glslang and Git for Windows with Bash for libusb's version-header generation. A minimal Git installation without Bash is insufficient for the full build.
++The full build also requires Python 3 for glslang and ICU's data, and Git for Windows with Bash for libusb's version-header generation. A minimal Git installation without Bash is insufficient for the full build.
+ 
+ For MSYS2, install `mingw-w64-ucrt-x86_64-gcc` with `pacman -S mingw-w64-ucrt-x86_64-gcc` and use `C:\msys64\ucrt64\bin` in PowerShell. Adjust the prefix for a Scoop installation of MSYS2. Use a separate build directory for each toolchain, and select both `gcc` and `g++` from the same installation.
+ 
+@@ -177,6 +178,8 @@ Build configuration parameters:
+ | `-DFFMPEG_PREBUILT_DIR=<path>`         | Unpacked FFmpeg package for the target platform; empty by default. |
+ | `-DCMAKE_C_COMPILER_LAUNCHER=ccache`   | Optional C compiler cache; requires `ccache`.                      |
+ | `-DCMAKE_CXX_COMPILER_LAUNCHER=ccache` | Optional C++ compiler cache; requires `ccache`.                    |
++| `-DANYPS5_ICU_HOST_C_COMPILER=<path>`  | Native C compiler for ICU's data tools; required when cross compiling; a native build uses `CMAKE_C_COMPILER`. |
++| `-DANYPS5_ICU_HOST_CXX_COMPILER=<path>` | Native C++ compiler for ICU's data tools; required when cross compiling; a native build uses `CMAKE_CXX_COMPILER`. |
+ | `-DANYPS5_NODE=<path>`                 | Node.js 26 or newer that runs the memory64 Emscripten tests `guest_long_double` and `emscripten_module_unwind`; `node` by default, Emscripten builds only. |
+ | `-DANYPS5_VIDEO_OUT_TEST_DRIVER=<driver>` | SDL video driver for the VideoOut flip tests; `windows` on Windows and `offscreen` elsewhere. |
+ | `-DANYPS5_AGC_EXECUTION_TESTS=<names>` | Semicolon-separated file names, without `.cpp`, of the `core/libs/prx/libSceAgcDriver/tests/execution` tests to build. Every other execution test is built from a stub that prints `skipped, this build leaves the test out with ANYPS5_AGC_EXECUTION_TESTS` and exits 77. A name with no source there fails the configure. Empty by default, which builds them all. |
+diff --git a/docs/dev/debt/changes/feat-icu-date-format.md b/docs/dev/debt/changes/feat-icu-date-format.md
+new file mode 100644
+index 00000000000..e8b4f01ff14
+--- /dev/null
++++ b/docs/dev/debt/changes/feat-icu-date-format.md
+@@ -0,0 +1,5 @@
++# libSceIcu
++
++## change [ICU date format exports]
++
++- [ICU date format exports](../../../core/libs/prx/libSceIcu/DateFormat.cpp) use [ICU 78.1](https://github.com/unicode-org/icu/blob/049e0d6a420629ac7db77256987d083a563287b5/icu4c/source/i18n/udat.cpp) and its locale, calendar, numbering and time-zone data. Console output and differences from firmware using ICU 68 remain unverified. A null locale uses the guest default locale. A null zone uses the ICU backend's default time zone. The calendar returned by `udat_getCalendar` belongs to the formatter and expires on close. Foreign handles, unknown date styles and negative array indices with undefined upstream behaviour throw. Closes when console measurements cover locale defaults, time zones and firmware-specific formatting.
+diff --git a/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md b/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md
+index 9b35a42f8c5..d689a1269a1 100644
+--- a/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md
++++ b/docs/dev/debt/changes/feat-icu-ucnv-get-canonical-name.md
+@@ -2,4 +2,4 @@
+ 
+ ## add Functional
+ 
+-- [`ucnv_getCanonicalName`](../../../core/libs/prx/libSceIcu/ConverterCanonicalName.cpp) uses the pinned ICU 78.1 alias-table implementation with guest-safe strings and status access. The reduced bundled data has no `cnvalias` resource, so it reports the same missing-data error for every lookup until converter alias data is built. The console uses ICU 68 and its alias data, and no hardware comparison is available. Closes when: ICU 68 converter alias data is built and the results are compared with the console.
++- [`ucnv_getCanonicalName`](../../../core/libs/prx/libSceIcu/ConverterCanonicalName.cpp) uses the pinned ICU 78.1 alias-table implementation with guest-safe strings and status access. Lookups use the `cnvalias` resource of the bundled ICU data package, built from ICU 78.1's `convrtrs.txt`. The console uses ICU 68 and its alias data, and no hardware comparison is available. Closes when: ICU 68 converter alias data is built and the results are compared with the console.
+diff --git a/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md b/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md
+index aa5c57bce0b..d76d2da93f3 100644
+--- a/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md
++++ b/docs/dev/debt/changes/feat-icu-ucnv-open-all-names.md
+@@ -2,4 +2,4 @@
+ 
+ ## add Functional
+ 
+-- [ucnv_openAllNames](../../../core/libs/prx/libSceIcu/ConverterAvailableNames.cpp) follows pinned ICU 78.1 and returns a guest-callable `UEnumeration` adapter whose count, narrow and Unicode iteration, reset and close operations forward to the host enumeration. The PS5 ABI and behavior are unmeasured. Null, unreadable or newly unwritable status pointers throw `std::invalid_argument` with `errno` preserved instead of reproducing upstream undefined memory access. The reduced bundled ICU data omits `cnvalias.icu`, so opening currently returns ICU's missing-resource error and no enumeration until converter alias data is supplied; it does not fabricate an empty enumeration.
++- [ucnv_openAllNames](../../../core/libs/prx/libSceIcu/ConverterAvailableNames.cpp) follows pinned ICU 78.1 and returns a guest-callable `UEnumeration` adapter whose count, narrow and Unicode iteration, reset and close operations forward to the host enumeration. The PS5 ABI and behavior are unmeasured. Null, unreadable or newly unwritable status pointers throw `std::invalid_argument` with `errno` preserved instead of reproducing upstream undefined memory access. The names come from `cnvalias.icu` in the bundled ICU data package.
+diff --git a/docs/dev/debt/changes/feat-libsceicu-availability-exports.md b/docs/dev/debt/changes/feat-libsceicu-availability-exports.md
+index 053b2fc1889..8061fa77efc 100644
+--- a/docs/dev/debt/changes/feat-libsceicu-availability-exports.md
++++ b/docs/dev/debt/changes/feat-libsceicu-availability-exports.md
+@@ -2,4 +2,4 @@
+ 
+ ## add Functional
+ 
+-- [Locale availability, locale name and string hash exports](../../../core/libs/prx/libSceIcu/Availability.cpp) (libSceIcu) - they call ICU 78.1 through its C entry points and pass the guest pointers to it unchanged, except that a null locale given to `uloc_getName`, `uloc_addLikelySubtags` or `uloc_minimizeSubtags` becomes this library's default locale instead of the host's, and report whatever `UErrorCode` ICU writes into the guest's status. This build ships no `icudt` data, so `uloc_addLikelySubtags` and `uloc_minimizeSubtags` answer `U_MISSING_RESOURCE_ERROR` until a guest loads ICU data through `udata_setCommonData`; `uloc_countAvailable`, `uloc_getAvailable`, `uloc_getName`, `ustr_hashUCharsN`, `ustr_hashCharsN` and `ustr_hashICharsN` are data-free, and the new test covers them. An unwritable guest pointer makes the wrapper return the function's failure value instead of faulting: the console faults there, which is not measured.
++- [Locale availability, locale name and string hash exports](../../../core/libs/prx/libSceIcu/Availability.cpp) (libSceIcu) - they call ICU 78.1 through its C entry points and pass the guest pointers to it unchanged, reporting whatever `UErrorCode` ICU writes into the guest's status. `uloc_addLikelySubtags` and `uloc_minimizeSubtags` read `langInfo` from the bundled ICU data package; `uloc_countAvailable`, `uloc_getAvailable`, `uloc_getName`, `ustr_hashUCharsN`, `ustr_hashCharsN` and `ustr_hashICharsN` are data-free, and the new test covers them. An unwritable guest pointer makes the wrapper return the function's failure value instead of faulting: the console faults there, which is not measured.
